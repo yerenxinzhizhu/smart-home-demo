@@ -3,8 +3,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import random
 import time
+from flask import make_response
 from flask import render_template
-
 # 禁用GPU并优化TensorFlow日志
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -60,8 +60,9 @@ def health_check():
 
 # 前端路由
 @app.route('/')
-def home():
+def serve_frontend():
     return render_template('index.html')  # 自动设置正确MIME类型
+
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
