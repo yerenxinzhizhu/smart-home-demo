@@ -59,9 +59,15 @@ def health_check():
 
 # 前端路由
 @app.route('/')
-def serve_frontend():
-    return send_from_directory(app.template_folder, 'index.html')
-
+def serve_index():
+    """主路由返回前端页面"""
+    try:
+        # 强制设置HTML内容类型
+        response = send_from_directory(frontend_dist, 'index.html')
+        response.headers['Content-Type'] = 'text/html; charset=utf-8'
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
