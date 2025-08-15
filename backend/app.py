@@ -60,10 +60,10 @@ def health_check():
 
 # 前端路由
 @app.route('/')
-def serve_frontend():
-    return render_template('index.html')  # 自动设置正确MIME类型
-
-@app.route('/<path:path>')
+def home():
+    response = make_response(render_template('index.html'))
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    return response@app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
 
