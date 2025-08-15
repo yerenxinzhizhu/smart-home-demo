@@ -4,160 +4,138 @@ from flask_cors import CORS
 import random
 import time
 
-# 初始化配置
+# 禁用GPU并优化TensorFlow日志
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# 获取项目根目录绝对路径
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend', 'dist')
-
-app = Flask(__name__, 
-           static_folder=FRONTEND_DIR,
-           static_url_path='')
-
+app = Flask(__name__, static_folder='../frontend', template_folder='../frontend')
 CORS(app)  # 允许跨域
 
-# 确保前端目录存在
-os.makedirs(FRONTEND_DIR, exist_ok=True)
-
-# 模拟AI系统
+# 模拟的轻量级AI模型（避免使用真实TensorFlow）
 class HomeSecurityAI:
     def __init__(self):
-        self.model_status = "active"
+        self.model_loaded = True
     
-    def detect(self):
+    def predict_person(self):
         return random.choice(["家人", "陌生人"])
+    
+    def check_command(self, cmd):
+        return cmd == "合法指令"
 
-ai = HomeSecurityAI()
+ai_system = HomeSecurityAI()
 
-# 系统状态
-state = {
-    "door": "locked",
-    "camera": "active",
-    "defenses": {
-        "signature_check": False,
+# 系统状态存储
+system_state = {
+    "door_lock": "locked",
+    "camera": {"status": "active", "last_detection": None},
+    "defense": {
+        "signature_verification": False,
         "model_protection": False
     },
     "stats": {
-        "attacks": 0,
-        "blocked": 0,
-        "last_updated": None
+        "total_attacks": 0,
+        "blocked_attacks": 0,
+        "last_attack": None
     }
 }
 
-# ======================
-# 中间件配置
-# ======================
+# 强制JSON响应中间件
 @app.after_request
-def add_headers(response):
-    """统一设置响应头"""
-    if request.path.startswith('/api'):
-        response.headers['Content-Type'] = 'application/json'
-    elif response.mimetype == 'text/html':
-        response.headers['Cache-Control'] = 'no-cache, no-store'
+def enforce_json(response):
+    response.headers['Content-Type'] = 'application/json'
+    response.headers['Cache-Control'] = 'no-cache, no-store'
     return response
 
-# ======================
-# 核心路由
-# ======================
-@app.route('/')
-@app.route('/<path:subpath>')
-def serve_frontend(subpath=None):
-    """服务前端入口文件"""
-    try:
-        return send_from_directory(FRONTEND_DIR, 'index.html')
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# ======================
-# API路由
-# ======================
-@app.route('/api/health')
+# Render必需的健康检查端点
+@app.route('/health')
 def health_check():
-    """Render健康检查端点"""
     return jsonify({
         "status": "healthy",
-        "timestamp": int(time.time())
+        "services": {
+            "ai": ai_system.model_loaded,
+            "last_heartbeat": int(time.time())
+        }
     })
 
+# 前端路由
+@app.route('/')
+def serve_frontend():
+    return send_from_directory(app.template_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory(app.static_folder, path)
+
+# API路由
 @app.route('/api/status')
 def get_status():
-    """获取系统状态"""
-    state["stats"]["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
     return jsonify({
-        "system": state,
-        "ai": ai.model_status
+        "system": system_state,
+        "ai_ready": ai_system.model_loaded
     })
 
 @app.route('/api/attack', methods=['POST'])
 def handle_attack():
-    """处理攻击请求"""
     data = request.json
     attack_type = data.get('type')
     
-    state["stats"]["attacks"] += 1
-    state["stats"]["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    system_state["stats"]["total_attacks"] += 1
+    system_state["stats"]["last_attack"] = time.strftime("%Y-%m-%d %H:%M:%S")
     
-    if attack_type == "command":
-        if not state["defenses"]["signature_check"]:
-            state["door"] = "unlocked"
-            return jsonify({
-                "success": True,
-                "message": "门锁已被非法打开"
-            })
+    if attack_type == "command_injection":
+        if not system_state["defense"]["signature_verification"]:
+            system_state["door_lock"] = "unlocked_attacked"
+            result = {"success": True, "message": "门锁已被非法打开"}
         else:
-            state["stats"]["blocked"] += 1
-            return jsonify({
-                "success": False,
-                "message": "防御生效：指令验证已拦截"
-            })
+            system_state["stats"]["blocked_attacks"] += 1
+            result = {"success": False, "message": "防御生效：指令签名验证已拦截攻击"}
     
-    elif attack_type == "camera":
-        if not state["defenses"]["model_protection"]:
-            state["camera"] = f"被欺骗({ai.detect()})"
-            return jsonify({
-                "success": True,
-                "message": "摄像头被欺骗"
-            })
+    elif attack_type == "camera_spoof":
+        detection = ai_system.predict_person()
+        if not system_state["defense"]["model_protection"]:
+            system_state["camera"]["last_detection"] = f"误判为{detection}"
+            result = {"success": True, "message": "摄像头被欺骗"}
         else:
-            state["stats"]["blocked"] += 1
-            return jsonify({
-                "success": False,
-                "message": "防御生效：AI模型已识别欺骗"
-            })
+            system_state["stats"]["blocked_attacks"] += 1
+            result = {"success": False, "message": "防御生效：模型保护已识别欺骗"}
     
-    return jsonify({"success": False}), 400
+    return jsonify({
+        **result,
+        "stats": system_state["stats"]
+    })
 
 @app.route('/api/defense', methods=['POST'])
 def toggle_defense():
-    """切换防御状态"""
     defense_type = request.json.get('type')
-    if defense_type in state["defenses"]:
-        state["defenses"][defense_type] = not state["defenses"][defense_type]
+    if defense_type in system_state["defense"]:
+        system_state["defense"][defense_type] = not system_state["defense"][defense_type]
         return jsonify({
             "success": True,
-            "state": state["defenses"][defense_type]
+            "new_state": system_state["defense"][defense_type],
+            "message": f"{defense_type}已{'启用' if system_state['defense'][defense_type] else '禁用'}"
         })
-    return jsonify({"success": False}), 400
+    return jsonify({"success": False, "message": "无效的防御类型"}), 400
 
-# ======================
-# 静态文件路由
-# ======================
-@app.route('/assets/<path:filename>')
-def static_files(filename):
-    """处理静态资源请求"""
-    return send_from_directory(os.path.join(FRONTEND_DIR, 'assets'), filename)
+@app.route('/api/reset', methods=['POST'])
+def reset_system():
+    system_state.update({
+        "door_lock": "locked",
+        "camera": {"status": "active", "last_detection": None},
+        "stats": {
+            "total_attacks": 0,
+            "blocked_attacks": 0,
+            "last_attack": None
+        }
+    })
+    return jsonify({"success": True, "message": "系统已重置"})
 
-# ======================
-# 错误处理
-# ======================
-@app.errorhandler(404)
-def not_found(e):
-    """处理未找到的路由"""
-    if request.path.startswith('/api'):
-        return jsonify({"error": "API endpoint not found"}), 404
-    return send_from_directory(FRONTEND_DIR, 'index.html')
+# 通配路由处理前端路由
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def catch_all(path):
+    if path.startswith('api/'):
+        return jsonify({"error": "Not found"}), 404
+    return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
@@ -166,4 +144,4 @@ if __name__ == '__main__':
         port=port,
         debug=False,
         threaded=True
-    )
+    ) 在这个基础上进行更改，给出完整代码
