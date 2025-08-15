@@ -63,7 +63,8 @@ def health_check():
 def home():
     response = make_response(render_template('index.html'))
     response.headers['Content-Type'] = 'text/html; charset=utf-8'
-    return response@app.route('/<path:path>')
+    return response
+@app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory(app.static_folder, path)
 
